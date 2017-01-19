@@ -6,7 +6,7 @@ import java.util.Properties;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction;
+import org.apache.flink.streaming.api.functions.source.RichSourceFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.connectors.mqtt.internal.MessageListenerQos0;
 import org.apache.flink.streaming.util.serialization.DeserializationSchema;
@@ -20,15 +20,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Class for Flink MQTT Subscriber parallel data sources.
+ * Class for Flink MQTT Subscriber data sources.
  * Uses the Eclipse Paho MQTT client library.
- * Does not perform checkpointing, and uses QoS 0 in the MQTT subscription by default. 
- * (Note: using QoS 1 or QoS 2 in the MQTT subscription does not provide at-least-once or exactly-once guarantees in Flink with this source class.)
- * For checkpointing and at-least-once/exactly-once guarantees, see MqttSourceQos12.java class.
+ * Currently does not perform checkpointing, and uses QoS 0 in the MQTT subscription by default. 
+ * <b>NOTE:</b> Currently using QoS 1 or QoS 2 in the MQTT subscription does not provide at-least-once or exactly-once guarantees in Flink with this source class.
+ * <b>NOTE:</b> This source has a parallelism of {@code 1}.
+ * TODO: Checkpointing and at-least-once/exactly-once guarantees.
  * 
  * @param <T> The type of records produced by this data source
  */
-public class MqttSourceQos0<T> extends RichParallelSourceFunction<T> implements ResultTypeQueryable<T>{
+public class MqttSourceQos0<T> extends RichSourceFunction<T> implements ResultTypeQueryable<T>{
 
 	private static final long serialVersionUID = 1L;
 
@@ -193,21 +194,15 @@ public class MqttSourceQos0<T> extends RichParallelSourceFunction<T> implements 
 	public void open(Configuration configuration) {
 		LOG.debug("open");
 		try {
-			// if the source parallelism is greater than 1, we have to alter the specified client id to ensure that the parallel tasks use unique client ids (as it is required with MQTT)
-			String clientIdRnd = clientId;
-			if (this.getRuntimeContext().getNumberOfParallelSubtasks() > 1){
-				clientIdRnd += "-" + this.getRuntimeContext().getIndexOfThisSubtask();
-			}
-			
-			// persistence is not needed since QoS is 0, so we set it to null
-			client = new MqttClient(serverURI, clientIdRnd, null);
+			// TODO: persistence is not needed since QoS is 0, so we set it to null
+			client = new MqttClient(serverURI, clientId, null);
 			
 			if (mqttSettings.containsKey(MQTT_CLIENT_TIME_TO_WAIT)){
 				client.setTimeToWait((Long)mqttSettings.get(MQTT_CLIENT_TIME_TO_WAIT));
 			}
 			
 
-			LOG.debug("Connecting to broker: " + serverURI + "with clientId=" + clientIdRnd);
+			LOG.debug("Connecting to broker: " + serverURI + "with clientId=" + clientId);
 			client.connect(this.getMqttConnectOptionsFromProperties());
 			LOG.debug("Connected to broker:" + serverURI);
 
