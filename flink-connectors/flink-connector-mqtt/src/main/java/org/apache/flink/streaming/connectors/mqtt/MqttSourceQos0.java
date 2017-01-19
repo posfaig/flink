@@ -20,8 +20,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Class for Flink MQTT Subscriber data sources.
+ * Class for Flink MQTT Subscriber parallel data sources.
  * Uses the Eclipse Paho MQTT client library.
+ * Does not perform checkpointing, and uses QoS 0 in the MQTT subscription by default. 
+ * (Note: using QoS 1 or QoS 2 in the MQTT subscription does not provide at-least-once or exactly-once guarantees in Flink with this source class.)
+ * For checkpointing and at-least-once/exactly-once guarantees, see MqttSourceQos12.java class.
  * 
  * @param <T> The type of records produced by this data source
  */
@@ -30,9 +33,6 @@ public class MqttSourceQos0<T> extends RichParallelSourceFunction<T> implements 
 	private static final long serialVersionUID = 1L;
 
 	private static final Logger LOG = LoggerFactory.getLogger(MqttSourceQos0.class);
-
-	// FIXME: Qos is supposed to be 0 here, however, there is an issue in eclipse paho, which makes Qos 0 useless. Therefore we use Qos 1, until the following issue is fixed: https://github.com/eclipse/paho.mqtt.java/issues/314
-	private static final int QOS = 1;
 
 	// Keys for SSL options of MQTT connection, see MqttConnectOptions class in Eclipse Paho docs
 	public static final String KEYSTORE_PATH = "com.ibm.ssl.keyStore";
@@ -49,9 +49,11 @@ public class MqttSourceQos0<T> extends RichParallelSourceFunction<T> implements 
 	public static final String MQTT_OPT_MAX_INFLIGHT = "mqtt.opt.max.inflight";
 	public static final String MQTT_CLIENT_TIME_TO_WAIT = "mqtt.client.time.to.wait";
 	public static final String MQTT_CLIENT_TIME_TO_WAIT_FOR_DISCONNECT = "mqtt.client.time.to.wait.for.disconnect";
+	public static final String MQTT_CLIENT_SUBSCRIPTION_QOS = "mqtt.client.subscription.qos";
 	
 	// Default values
 	public static final long MQTT_CLIENT_TIME_TO_WAIT_FOR_DISCONNECT_DEFAULT = 10000L;
+	private static final int MQTT_QOS_DEFAULT = 0;
 	
 	protected DeserializationSchema<T> schema;
 
@@ -157,7 +159,9 @@ public class MqttSourceQos0<T> extends RichParallelSourceFunction<T> implements 
 		}
 
 		LOG.debug("topic=" + topic);
-		client.subscribe(topic, MqttSourceQos0.QOS, new MessageListenerQos0<T>(sourceContext, schema));
+		client.subscribe(topic, 
+				((mqttSettings.get(MqttSourceQos0.MQTT_CLIENT_SUBSCRIPTION_QOS) == null) ? MQTT_QOS_DEFAULT : (Integer)mqttSettings.get(MqttSourceQos0.MQTT_CLIENT_SUBSCRIPTION_QOS)), 
+				new MessageListenerQos0<T>(sourceContext, schema));
 
 		// since incoming MQTT messages are consumed by an async messagelistener, we block the call here
 
